@@ -98,9 +98,14 @@ func watchfile(fichiercsv string, reloadconf chan bool) error {
 
 func handlerRetCap(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, %q\n", html.EscapeString(r.URL.Path))
-	ip := strings.Split(r.RemoteAddr, ":")[0]
-	fmt.Fprintf(w, "ip: %q\n", html.EscapeString(ip))
-	fmt.Fprintf(w, "forward: %q\n", html.EscapeString(r.Header.Get("X-Forwarded-For")))
+	ip := ""
+	forwardfor := html.EscapeString(r.Header.Get("X-Forwarded-For"))
+	if forwardfor != "" {
+		ip = forwardfor
+	} else {
+		ip = html.EscapeString(strings.Split(r.RemoteAddr, ":")[0])
+	}
+	fmt.Fprintf(w, "ip: %q\n", ip)
 }
 
 func main() {
@@ -122,10 +127,12 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		} else {
-			fichier = viper.GetString("data.corres")
-			hostport = fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
-			log.Println("Fichier de config a changé.")
-			reload <- true
+			fichiernew := viper.GetString("data.corres")
+			if fichiernew != fichier {
+				log.Println("Fichier de config a changé.")
+				fichier = fichiernew
+				reload <- true
+			}
 		}
 	})
 
