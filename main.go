@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-fsnotify/fsnotify"
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
@@ -53,7 +53,7 @@ func capforIp(rip string, csvmap map[string]string) (string, error) {
 	return "", nil
 }
 
-func watchfile(fichiercsv string) error {
+func watchfile(fichiercsv string, reloadconf chan bool) error {
 	if _, err := os.Stat(fichiercsv); os.IsNotExist(err) {
 		log.Fatal("Erreur ", err)
 	}
@@ -68,13 +68,16 @@ func watchfile(fichiercsv string) error {
 		return err
 	}
 	defer watcher.Close()
-
 	done := make(chan bool)
 	log.Printf("%v\n", datacsv)
 
 	go func() {
 		for {
 			select {
+			case <-reloadconf:
+				log.Println("Modification du fichier de config")
+				done <- true
+				break
 			case event := <-watcher.Events:
 				log.Printf("Modification %v\n", event)
 				done <- true
@@ -107,20 +110,31 @@ func main() {
 	viper.AddConfigPath(".")
 	viper.Set("Verbose", true)
 	err := viper.ReadInConfig()
+	fichier := viper.GetString("data.corres")
+	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
+	reload := make(chan bool)
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	//	viper.WatchConfig()
-	//	viper.OnConfigChange(func(e fsnotify.Event) {
-	//		log.Println("Le fichier de configuration a changé",e)
-	//	})
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		err := viper.ReadInConfig()
+		if err != nil {
+			log.Println(err)
+		} else {
+			fichier = viper.GetString("data.corres")
+			hostport = fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
+			log.Println("Fichier de config a changé.")
+			reload <- true
+		}
+	})
 
-	fichier := viper.GetString("data.corres")
-	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
+	viper.WatchConfig()
+
 	http.HandleFunc("/", handlerRetCap)
 	go func() {
 		for {
-			watchfile(fichier)
+			watchfile(fichier, reload)
 			log.Println("Rechargement du fichier", fichier)
 		}
 	}()
