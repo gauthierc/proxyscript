@@ -2,12 +2,16 @@ package main
 
 import (
 	"encoding/csv"
+	"fmt"
+	"html"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/go-fsnotify/fsnotify"
+	"github.com/spf13/viper"
 )
 
 func parseCsvFile(file string) (map[string]string, error) {
@@ -96,9 +100,31 @@ func watchfile(fichiercsv string) error {
 	return err
 }
 
-func main() {
-	fichier := "./sys/essai.csv"
+func retCap(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello, %q\n", html.EscapeString(r.URL.Path))
+	fmt.Fprintf(w, "ip: %q\n", html.EscapeString(r.RemoteAddr))
+	fmt.Fprintf(w, "forward: %q\n", html.EscapeString(r.Header.Get("X-Forwarded-For")))
+}
 
-	watchfile(fichier)
+func main() {
+	viper.SetConfigType("toml")
+	viper.SetConfigName("proxyscript")
+	viper.AddConfigPath("./config/")
+	viper.AddConfigPath(".")
+	viper.Set("Verbose", true)
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	//	viper.WatchConfig()
+	//	viper.OnConfigChange(func(in fsnotify.Event) {
+	//		log.Println("Le fichier de configuration a changé :")
+	//	})
+
+	fichier := viper.GetString("data.corres")
+	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
+	http.HandleFunc("/", retCap)
+	go watchfile(fichier)
+	log.Fatal(http.ListenAndServe(hostport, nil))
 	log.Println("Sortie du programme")
 }
