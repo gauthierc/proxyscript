@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/go-fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -55,7 +57,6 @@ func watchfile(fichiercsv string) error {
 	if _, err := os.Stat(fichiercsv); os.IsNotExist(err) {
 		log.Fatal("Erreur ", err)
 	}
-	remoteip := "172.29.143.107"
 	datacsv, err := parseCsvFile(fichiercsv)
 	if err != nil {
 		log.Println("Erreur ", err)
@@ -69,40 +70,33 @@ func watchfile(fichiercsv string) error {
 	defer watcher.Close()
 
 	done := make(chan bool)
-	fichiercap, _ := capforIp(remoteip, datacsv)
-	log.Println(fichiercap)
 	log.Printf("%v\n", datacsv)
 
 	go func() {
 		for {
 			select {
 			case event := <-watcher.Events:
-				datacsv, _ = parseCsvFile(fichiercsv)
 				log.Printf("Modification %v\n", event)
-				fichiercap, _ = capforIp(remoteip, datacsv)
-				log.Println(fichiercap)
-				log.Printf("%v\n", datacsv)
+				done <- true
 			case err := <-watcher.Events:
-				datacsv, _ = parseCsvFile(fichiercsv)
-				log.Printf("Erreur  %v\n", err)
-				fichiercap, _ = capforIp(remoteip, datacsv)
-				log.Println(fichiercap)
-				log.Printf("%v\n", datacsv)
+				log.Printf("%v\n", err)
+				done <- true
 			}
 		}
 	}()
-	log.Println("Sortie du gofunc")
 	if err := watcher.Add(fichiercsv); err != nil {
 		log.Println("Erreur", err)
 		return err
 	}
 	<-done
+	time.Sleep(time.Millisecond * 100)
 	return err
 }
 
-func retCap(w http.ResponseWriter, r *http.Request) {
+func handlerRetCap(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, %q\n", html.EscapeString(r.URL.Path))
-	fmt.Fprintf(w, "ip: %q\n", html.EscapeString(r.RemoteAddr))
+	ip := strings.Split(r.RemoteAddr, ":")[0]
+	fmt.Fprintf(w, "ip: %q\n", html.EscapeString(ip))
 	fmt.Fprintf(w, "forward: %q\n", html.EscapeString(r.Header.Get("X-Forwarded-For")))
 }
 
@@ -117,14 +111,19 @@ func main() {
 		log.Fatal(err)
 	}
 	//	viper.WatchConfig()
-	//	viper.OnConfigChange(func(in fsnotify.Event) {
-	//		log.Println("Le fichier de configuration a changé :")
+	//	viper.OnConfigChange(func(e fsnotify.Event) {
+	//		log.Println("Le fichier de configuration a changé",e)
 	//	})
 
 	fichier := viper.GetString("data.corres")
 	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
-	http.HandleFunc("/", retCap)
-	go watchfile(fichier)
+	http.HandleFunc("/", handlerRetCap)
+	go func() {
+		for {
+			watchfile(fichier)
+			log.Println("Rechargement du fichier", fichier)
+		}
+	}()
 	log.Fatal(http.ListenAndServe(hostport, nil))
 	log.Println("Sortie du programme")
 }
