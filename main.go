@@ -19,25 +19,109 @@ import (
 type Fichiercsv struct {
 	nom  string
 	data map[string]string
+	cap  map[string]Fichiercap
 }
 
 type Fichiercap struct {
-	nom  string
-	data string
+	nom   string
+	data  []byte
+	count int
 }
 
-func New(nomfic string) *Fichiercsv {
+// Initialisation d'un fichier .cap
+func NewCap(nomfic string) (*Fichiercap, error) {
+	// test existance du fichier
+	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
+		log.Println("Erreur ", err)
+		return nil, err
+	}
+	file := &Fichiercap{}
+	file.nom = nomfic
+	file.data = make([]byte, 100)
+	file.count = 0
+	return file, nil
+}
+
+// Chargement en mémoire du fichier .cap
+func (file *Fichiercap) LoadCapFile() error {
+	f, err := os.Open(file.nom)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	file.count, err = f.Read(file.data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Mise à jour en mémoire du fichier .cap
+func (file *Fichiercap) UpdateCapFile(nom string) error {
+	file.nom = nom
+	err := file.LoadCapFile()
+	if err != nil {
+		return err
+	}
+	log.Println("Rechargement du fichier cap", file.nom)
+	return nil
+
+}
+
+// Surveillance des modification du fichier .cap
+func (file *Fichiercap) WatchfileCap(reloadconf chan bool) error {
+	err := file.LoadCapFile()
+	if err != nil {
+		log.Println("Erreur ", err)
+		return err
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Println("Erreur ", err)
+		return err
+	}
+	defer watcher.Close()
+	done := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-reloadconf:
+				log.Println("Modification du fichier de config")
+				done <- true
+				break
+			case event := <-watcher.Events:
+				log.Printf("Modification FichierCap %v\n", event)
+				done <- true
+			case err := <-watcher.Events:
+				log.Printf("%v\n", err)
+				done <- true
+			}
+		}
+	}()
+	if err := watcher.Add(file.nom); err != nil {
+		log.Println("Erreur", err)
+		return err
+	}
+	<-done
+	time.Sleep(time.Millisecond * 100)
+	return err
+}
+
+// Initialisation d'un fichier .csv
+func NewCsv(nomfic string) *Fichiercsv {
 	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
 		log.Fatal("Erreur ", err)
 	}
 	file := &Fichiercsv{}
 	file.nom = nomfic
 	file.data = make(map[string]string)
-	file.ParseCsvFile()
+	file.LoadCsvFile()
 	return file
 }
 
-func (file *Fichiercsv) ParseCsvFile() error {
+// Chargement en mémoire du fichier .csv
+func (file *Fichiercsv) LoadCsvFile() error {
 	f, err := os.Open(file.nom)
 	if err != nil {
 		return err
@@ -62,9 +146,10 @@ func (file *Fichiercsv) ParseCsvFile() error {
 	return nil
 }
 
-func (file *Fichiercsv) Update(nom string) error {
+// Mise à jour en mémoire du fichier .csv
+func (file *Fichiercsv) UpdateCsvFile(nom string) error {
 	file.nom = nom
-	err := file.ParseCsvFile()
+	err := file.LoadCsvFile()
 	if err != nil {
 		return err
 	}
@@ -72,6 +157,7 @@ func (file *Fichiercsv) Update(nom string) error {
 	return nil
 }
 
+// Retourne le nom du fichier cap en fonction de l'ip
 func (file *Fichiercsv) CapforIp(rip string) (string, error) {
 	ip, _, err := net.ParseCIDR(rip + "/32")
 	if err != nil {
@@ -86,8 +172,8 @@ func (file *Fichiercsv) CapforIp(rip string) (string, error) {
 	return "", nil
 }
 
-func (file *Fichiercsv) Watchfile(reloadconf chan bool) error {
-	err := file.ParseCsvFile()
+func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
+	err := file.LoadCsvFile()
 	if err != nil {
 		log.Println("Erreur ", err)
 		return err
@@ -147,7 +233,7 @@ func main() {
 	err := viper.ReadInConfig()
 	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
 	reload := make(chan bool)
-	file := New(viper.GetString("data.corres"))
+	file := NewCsv(viper.GetString("data.corres"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -159,7 +245,7 @@ func main() {
 			fichier := viper.GetString("data.corres")
 			if fichier != file.nom {
 				log.Println("Fichier de config a changé.")
-				file.Update(fichier)
+				file.UpdateCsvFile(fichier)
 				reload <- true
 			}
 		}
@@ -170,7 +256,7 @@ func main() {
 	http.HandleFunc("/", handlerRetCap)
 	go func() {
 		for {
-			file.Watchfile(reload)
+			file.WatchCsvFile(reload)
 		}
 	}()
 	log.Fatal(http.ListenAndServe(hostport, nil))
