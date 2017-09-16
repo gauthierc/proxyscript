@@ -92,11 +92,10 @@ func (file *Fichiercap) WatchCapFile() error {
 		for {
 			select {
 			case event := <-watcher.Events:
-				log.Printf("Modification FichierCap %v\n", event)
-				done <- true
-			case err := <-watcher.Events:
-				log.Printf("%v\n", err)
-				done <- true
+				if event.Name != "" {
+					log.Printf("Modification FichierCap %v\n", event)
+					done <- true
+				}
 			}
 		}
 	}()
@@ -146,7 +145,6 @@ func (file *Fichiercsv) LoadCsvFile() error {
 			if err == io.EOF {
 				err = nil
 			}
-
 			return err
 		}
 		if row[1] != "" {
@@ -156,7 +154,6 @@ func (file *Fichiercsv) LoadCsvFile() error {
 				file.cap[row[1]], err = NewCap(row[1], file.path)
 				if err != nil {
 					log.Println("Erreur LoadCsvFile NewCap ", err)
-					return err
 				} else {
 					file.cap[row[1]].LoadCapFile()
 					go file.cap[row[1]].WatchCapFile()
@@ -206,7 +203,7 @@ func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
 	}
 	defer watcher.Close()
 	done := make(chan bool)
-	log.Printf("%v\n", file.data)
+	//	log.Printf("%v\n", file.data)
 
 	go func() {
 		for {
@@ -216,11 +213,10 @@ func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
 				done <- true
 				break
 			case event := <-watcher.Events:
-				log.Printf("Modification %v\n", event)
-				done <- true
-			case err := <-watcher.Events:
-				log.Printf("%v\n", err)
-				done <- true
+				if event.Name != "" {
+					log.Printf("Modification %v\n", event)
+					done <- true
+				}
 			}
 		}
 	}()
@@ -260,6 +256,7 @@ func (file *Fichiercsv) handlerRetCap(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	log.Println("Lancement de proxyscript")
 	viper.SetConfigType("toml")
 	viper.SetConfigName("proxyscript")
 	viper.AddConfigPath("./config/")
@@ -294,6 +291,7 @@ func main() {
 			file.WatchCsvFile(reload)
 		}
 	}()
+	log.Println("Ecoute du serveur http de proxyscript")
 	log.Fatal(http.ListenAndServe(hostport, nil))
 	log.Println("Sortie du programme")
 }
