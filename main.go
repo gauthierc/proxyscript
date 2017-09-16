@@ -16,35 +16,68 @@ import (
 	"github.com/spf13/viper"
 )
 
-func parseCsvFile(file string) (map[string]string, error) {
-	f, err := os.Open(file)
+type Fichiercsv struct {
+	nom  string
+	data map[string]string
+}
+
+type Fichiercap struct {
+	nom  string
+	data string
+}
+
+func New(nomfic string) *Fichiercsv {
+	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
+		log.Fatal("Erreur ", err)
+	}
+	file := &Fichiercsv{}
+	file.nom = nomfic
+	file.data = make(map[string]string)
+	file.ParseCsvFile()
+	return file
+}
+
+func (file *Fichiercsv) ParseCsvFile() error {
+	f, err := os.Open(file.nom)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-
+	for key, _ := range file.data {
+		delete(file.data, key)
+	}
 	csvr := csv.NewReader(f)
-
-	filespac := map[string]string{}
 	for {
 		row, err := csvr.Read()
 		if err != nil {
 			if err == io.EOF {
 				err = nil
 			}
-			return filespac, err
+
+			return err
 		}
 
-		filespac[row[0]] = row[1]
+		file.data[row[0]] = row[1]
 	}
+	return nil
 }
 
-func capforIp(rip string, csvmap map[string]string) (string, error) {
+func (file *Fichiercsv) Update(nom string) error {
+	file.nom = nom
+	err := file.ParseCsvFile()
+	if err != nil {
+		return err
+	}
+	log.Println("Rechargement du fichier", file.nom)
+	return nil
+}
+
+func (file *Fichiercsv) CapforIp(rip string) (string, error) {
 	ip, _, err := net.ParseCIDR(rip + "/32")
 	if err != nil {
 		return "", err
 	}
-	for key, value := range csvmap {
+	for key, value := range file.data {
 		_, ipnet, _ := net.ParseCIDR(key)
 		if ipnet.Contains(ip) {
 			return value, nil
@@ -53,11 +86,8 @@ func capforIp(rip string, csvmap map[string]string) (string, error) {
 	return "", nil
 }
 
-func watchfile(fichiercsv string, reloadconf chan bool) error {
-	if _, err := os.Stat(fichiercsv); os.IsNotExist(err) {
-		log.Fatal("Erreur ", err)
-	}
-	datacsv, err := parseCsvFile(fichiercsv)
+func (file *Fichiercsv) Watchfile(reloadconf chan bool) error {
+	err := file.ParseCsvFile()
 	if err != nil {
 		log.Println("Erreur ", err)
 		return err
@@ -69,7 +99,7 @@ func watchfile(fichiercsv string, reloadconf chan bool) error {
 	}
 	defer watcher.Close()
 	done := make(chan bool)
-	log.Printf("%v\n", datacsv)
+	log.Printf("%v\n", file.data)
 
 	go func() {
 		for {
@@ -87,7 +117,7 @@ func watchfile(fichiercsv string, reloadconf chan bool) error {
 			}
 		}
 	}()
-	if err := watcher.Add(fichiercsv); err != nil {
+	if err := watcher.Add(file.nom); err != nil {
 		log.Println("Erreur", err)
 		return err
 	}
@@ -115,10 +145,9 @@ func main() {
 	viper.AddConfigPath(".")
 	viper.Set("Verbose", true)
 	err := viper.ReadInConfig()
-	fichier := viper.GetString("data.corres")
 	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
 	reload := make(chan bool)
-
+	file := New(viper.GetString("data.corres"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -127,10 +156,10 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		} else {
-			fichiernew := viper.GetString("data.corres")
-			if fichiernew != fichier {
+			fichier := viper.GetString("data.corres")
+			if fichier != file.nom {
 				log.Println("Fichier de config a changé.")
-				fichier = fichiernew
+				file.Update(fichier)
 				reload <- true
 			}
 		}
@@ -141,8 +170,7 @@ func main() {
 	http.HandleFunc("/", handlerRetCap)
 	go func() {
 		for {
-			watchfile(fichier, reload)
-			log.Println("Rechargement du fichier", fichier)
+			file.Watchfile(reload)
 		}
 	}()
 	log.Fatal(http.ListenAndServe(hostport, nil))
