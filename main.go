@@ -260,7 +260,7 @@ func main() {
 	viper.SetConfigType("toml")
 	viper.SetConfigName("proxyscript")
 	viper.AddConfigPath("./config/")
-	viper.AddConfigPath(".")
+	viper.AddConfigPath("/home/proxyscript/config/")
 	viper.Set("Verbose", true)
 	err := viper.ReadInConfig()
 	if err != nil {
