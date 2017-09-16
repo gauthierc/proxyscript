@@ -40,7 +40,7 @@ func NewCap(nomfic string, path string) (*Fichiercap, error) {
 	file := &Fichiercap{}
 	file.nom = nomfic
 	file.path = path
-	file.data = make([]byte, 100)
+	file.data = make([]byte, 5000)
 	file.count = 0
 	return file, nil
 }
@@ -136,9 +136,9 @@ func (file *Fichiercsv) LoadCsvFile() error {
 	for key, _ := range file.data {
 		delete(file.data, key)
 	}
-	for key, _ := range file.cap {
-		delete(file.cap, key)
-	}
+	//	for key, _ := range file.cap {
+	//		delete(file.cap, key)
+	//	}
 	csvr := csv.NewReader(f)
 	for {
 		row, err := csvr.Read()
@@ -151,6 +151,7 @@ func (file *Fichiercsv) LoadCsvFile() error {
 		}
 		if row[1] != "" {
 			file.data[row[0]] = row[1]
+			// Je verifie que le fichier n'est pas déjà en mémoire
 			if file.cap[row[1]] == nil {
 				file.cap[row[1]], err = NewCap(row[1], file.path)
 				if err != nil {
@@ -232,8 +233,8 @@ func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
 	return err
 }
 
-func handlerRetCap(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %q\n", html.EscapeString(r.URL.Path))
+func (file *Fichiercsv) handlerRetCap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/octet-stream")
 	ip := ""
 	forwardfor := html.EscapeString(r.Header.Get("X-Forwarded-For"))
 	if forwardfor != "" {
@@ -241,7 +242,21 @@ func handlerRetCap(w http.ResponseWriter, r *http.Request) {
 	} else {
 		ip = html.EscapeString(strings.Split(r.RemoteAddr, ":")[0])
 	}
-	fmt.Fprintf(w, "ip: %q\n", ip)
+	//	fmt.Fprintf(w, "ip: %q\n", ip)
+	nomfic, err := file.CapforIp(ip)
+	if err != nil {
+		log.Println("Aucun fichier pour l'ip ", ip)
+		http.Error(w, "Fichier cap inexistant", http.StatusNotFound)
+		return
+	}
+	if file.cap[nomfic] != nil {
+		fmt.Fprintf(w, "// fichier: %s\n", nomfic)
+		fmt.Fprintf(w, "%s\n", file.cap[nomfic].data[:file.cap[nomfic].count])
+		log.Printf("%s - GET \"%s\" %s %s IpSource:%s\n", ip, r.URL.Path, nomfic, r.UserAgent(), r.RemoteAddr)
+	} else {
+		http.Error(w, "Fichier cap inexistant", http.StatusNotFound)
+		log.Printf("%s - GET \"%s\" --PAS DE FICHIER CAP-- %s IpSource:%s\n", ip, r.URL.Path, r.UserAgent(), r.RemoteAddr)
+	}
 }
 
 func main() {
@@ -273,7 +288,7 @@ func main() {
 
 	viper.WatchConfig()
 
-	http.HandleFunc("/", handlerRetCap)
+	http.HandleFunc("/", file.handlerRetCap)
 	go func() {
 		for {
 			file.WatchCsvFile(reload)
