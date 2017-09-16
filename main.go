@@ -19,24 +19,27 @@ import (
 type Fichiercsv struct {
 	nom  string
 	data map[string]string
-	cap  map[string]Fichiercap
+	cap  map[string]*Fichiercap
+	path string
 }
 
 type Fichiercap struct {
 	nom   string
 	data  []byte
 	count int
+	path  string
 }
 
 // Initialisation d'un fichier .cap
-func NewCap(nomfic string) (*Fichiercap, error) {
+func NewCap(nomfic string, path string) (*Fichiercap, error) {
 	// test existance du fichier
-	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
-		log.Println("Erreur ", err)
+	if _, err := os.Stat(path + nomfic); os.IsNotExist(err) {
+		log.Println("Erreur NewCap ", err)
 		return nil, err
 	}
 	file := &Fichiercap{}
 	file.nom = nomfic
+	file.path = path
 	file.data = make([]byte, 100)
 	file.count = 0
 	return file, nil
@@ -44,8 +47,9 @@ func NewCap(nomfic string) (*Fichiercap, error) {
 
 // Chargement en mémoire du fichier .cap
 func (file *Fichiercap) LoadCapFile() error {
-	f, err := os.Open(file.nom)
+	f, err := os.Open(file.path + file.nom)
 	if err != nil {
+		log.Println("Erreur LoadCapFile ", err)
 		return err
 	}
 	defer f.Close()
@@ -61,18 +65,19 @@ func (file *Fichiercap) UpdateCapFile(nom string) error {
 	file.nom = nom
 	err := file.LoadCapFile()
 	if err != nil {
+		log.Println("Erreur UpdateCapFile ", err)
 		return err
 	}
-	log.Println("Rechargement du fichier cap", file.nom)
+	log.Println("Rechargement du fichier cap", file.path+file.nom)
 	return nil
 
 }
 
 // Surveillance des modification du fichier .cap
-func (file *Fichiercap) WatchfileCap(reloadconf chan bool) error {
+func (file *Fichiercap) WatchCapFile() error {
 	err := file.LoadCapFile()
 	if err != nil {
-		log.Println("Erreur ", err)
+		log.Println("Erreur WatchCapFile Load", err)
 		return err
 	}
 	watcher, err := fsnotify.NewWatcher()
@@ -86,10 +91,6 @@ func (file *Fichiercap) WatchfileCap(reloadconf chan bool) error {
 	go func() {
 		for {
 			select {
-			case <-reloadconf:
-				log.Println("Modification du fichier de config")
-				done <- true
-				break
 			case event := <-watcher.Events:
 				log.Printf("Modification FichierCap %v\n", event)
 				done <- true
@@ -99,8 +100,9 @@ func (file *Fichiercap) WatchfileCap(reloadconf chan bool) error {
 			}
 		}
 	}()
-	if err := watcher.Add(file.nom); err != nil {
-		log.Println("Erreur", err)
+	log.Println("WatchCapFile ", file.path+file.nom)
+	if err := watcher.Add(file.path + file.nom); err != nil {
+		log.Println("Erreur WatchCapFile Add", err)
 		return err
 	}
 	<-done
@@ -109,13 +111,15 @@ func (file *Fichiercap) WatchfileCap(reloadconf chan bool) error {
 }
 
 // Initialisation d'un fichier .csv
-func NewCsv(nomfic string) *Fichiercsv {
+func NewCsv(nomfic string, path string) *Fichiercsv {
 	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
-		log.Fatal("Erreur ", err)
+		log.Fatal("Erreur NewCsv ", err)
 	}
 	file := &Fichiercsv{}
 	file.nom = nomfic
+	file.path = path
 	file.data = make(map[string]string)
+	file.cap = make(map[string]*Fichiercap)
 	file.LoadCsvFile()
 	return file
 }
@@ -124,11 +128,16 @@ func NewCsv(nomfic string) *Fichiercsv {
 func (file *Fichiercsv) LoadCsvFile() error {
 	f, err := os.Open(file.nom)
 	if err != nil {
+		log.Println("Erreur LoadCsvFile ", err)
 		return err
 	}
 	defer f.Close()
+	// Suppression des entrées précédentes si elles existent
 	for key, _ := range file.data {
 		delete(file.data, key)
+	}
+	for key, _ := range file.cap {
+		delete(file.cap, key)
 	}
 	csvr := csv.NewReader(f)
 	for {
@@ -140,8 +149,19 @@ func (file *Fichiercsv) LoadCsvFile() error {
 
 			return err
 		}
-
-		file.data[row[0]] = row[1]
+		if row[1] != "" {
+			file.data[row[0]] = row[1]
+			if file.cap[row[1]] == nil {
+				file.cap[row[1]], err = NewCap(row[1], file.path)
+				if err != nil {
+					log.Println("Erreur LoadCsvFile NewCap ", err)
+					return err
+				} else {
+					file.cap[row[1]].LoadCapFile()
+					go file.cap[row[1]].WatchCapFile()
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -231,12 +251,12 @@ func main() {
 	viper.AddConfigPath(".")
 	viper.Set("Verbose", true)
 	err := viper.ReadInConfig()
-	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
-	reload := make(chan bool)
-	file := NewCsv(viper.GetString("data.corres"))
 	if err != nil {
 		log.Fatal(err)
 	}
+	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
+	reload := make(chan bool)
+	file := NewCsv(viper.GetString("data.corres"), viper.GetString("data.repcap"))
 	viper.OnConfigChange(func(e fsnotify.Event) {
 		err := viper.ReadInConfig()
 		if err != nil {
