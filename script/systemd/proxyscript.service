@@ -1,0 +1,13 @@
+[Unit]
+Description=Proxyscript
+ConditionPathExists=/home/proxyscript/config/proxyscript.toml
+
+[Service]
+Type=simple
+User=proxyscript
+Group=proxyscript
+ExecStart=/home/proxyscript/proxyscript
+ExecStop=killall proxyscript
+
+[Install]
+WantedBy=multi-user.target
