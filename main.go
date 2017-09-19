@@ -16,28 +16,28 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Fichiercsv struct {
+type fichierCsv struct {
 	nom  string
 	data map[string]string
-	pac  map[string]*Fichierpac
+	pac  map[string]*fichierPac
 	path string
 }
 
-type Fichierpac struct {
+type fichierPac struct {
 	nom   string
 	data  []byte
 	count int
 	path  string
 }
 
-// Initialisation d'un fichier .pac
-func NewPac(nomfic string, path string) (*Fichierpac, error) {
+// newPac : Initialisation d'un fichier .pac
+func newPac(nomfic string, path string) (*fichierPac, error) {
 	// test existance du fichier
 	if _, err := os.Stat(path + nomfic); os.IsNotExist(err) {
-		log.Println("Erreur NewPac ", err)
+		log.Println("Erreur newPac ", err)
 		return nil, err
 	}
-	file := &Fichierpac{}
+	file := &fichierPac{}
 	file.nom = nomfic
 	file.path = path
 	file.data = make([]byte, 5000)
@@ -45,8 +45,8 @@ func NewPac(nomfic string, path string) (*Fichierpac, error) {
 	return file, nil
 }
 
-// Chargement en mémoire du fichier .pac
-func (file *Fichierpac) LoadPacFile() error {
+// LoadPacFile : Chargement en mémoire du fichier .pac
+func (file *fichierPac) LoadPacFile() error {
 	f, err := os.Open(file.path + file.nom)
 	if err != nil {
 		log.Println("Erreur LoadPacFile ", err)
@@ -60,8 +60,8 @@ func (file *Fichierpac) LoadPacFile() error {
 	return nil
 }
 
-// Mise à jour en mémoire du fichier .pac
-func (file *Fichierpac) UpdatePacFile(nom string) error {
+// UpdatePacFile : Mise à jour en mémoire du fichier .pac
+func (file *fichierPac) UpdatePacFile(nom string) error {
 	file.nom = nom
 	err := file.LoadPacFile()
 	if err != nil {
@@ -73,8 +73,8 @@ func (file *Fichierpac) UpdatePacFile(nom string) error {
 
 }
 
-// Surveillance des modifications du fichier .pac
-func (file *Fichierpac) WatchPacFile() error {
+// WatchPacFile : Surveillance des modifications du fichier .pac
+func (file *fichierPac) WatchPacFile() error {
 	err := file.LoadPacFile()
 	if err != nil {
 		log.Println("Erreur WatchPacFile Load", err)
@@ -109,22 +109,22 @@ func (file *Fichierpac) WatchPacFile() error {
 	return err
 }
 
-// Initialisation d'un fichier .csv
-func NewCsv(nomfic string, path string) *Fichiercsv {
+// newCsv : Initialisation d'un fichier .csv
+func newCsv(nomfic string, path string) *fichierCsv {
 	if _, err := os.Stat(nomfic); os.IsNotExist(err) {
-		log.Fatal("Erreur NewCsv ", err)
+		log.Fatal("Erreur newCsv ", err)
 	}
-	file := &Fichiercsv{}
+	file := &fichierCsv{}
 	file.nom = nomfic
 	file.path = path
 	file.data = make(map[string]string)
-	file.pac = make(map[string]*Fichierpac)
+	file.pac = make(map[string]*fichierPac)
 	file.LoadCsvFile()
 	return file
 }
 
-// Chargement en mémoire du fichier .csv
-func (file *Fichiercsv) LoadCsvFile() error {
+// LoadCsvFile : Chargement en mémoire du fichier .csv
+func (file *fichierCsv) LoadCsvFile() error {
 	f, err := os.Open(file.nom)
 	if err != nil {
 		log.Println("Erreur LoadCsvFile ", err)
@@ -132,7 +132,7 @@ func (file *Fichiercsv) LoadCsvFile() error {
 	}
 	defer f.Close()
 	// Suppression des entrées précédentes si elles existent
-	for key, _ := range file.data {
+	for key := range file.data {
 		delete(file.data, key)
 	}
 	csvr := csv.NewReader(f)
@@ -148,9 +148,9 @@ func (file *Fichiercsv) LoadCsvFile() error {
 			file.data[row[0]] = row[1]
 			// Je verifie que le fichier n'est pas déjà en mémoire
 			if file.pac[row[1]] == nil {
-				file.pac[row[1]], err = NewPac(row[1], file.path)
+				file.pac[row[1]], err = newPac(row[1], file.path)
 				if err != nil {
-					log.Println("Erreur LoadCsvFile NewPac ", err)
+					log.Println("Erreur LoadCsvFile newPac ", err)
 				} else {
 					file.pac[row[1]].LoadPacFile()
 					go file.pac[row[1]].WatchPacFile()
@@ -158,11 +158,10 @@ func (file *Fichiercsv) LoadCsvFile() error {
 			}
 		}
 	}
-	return nil
 }
 
 // Mise à jour en mémoire du fichier .csv
-func (file *Fichiercsv) UpdateCsvFile(nom string) error {
+func (file *fichierCsv) UpdateCsvFile(nom string) error {
 	file.nom = nom
 	err := file.LoadCsvFile()
 	if err != nil {
@@ -173,7 +172,7 @@ func (file *Fichiercsv) UpdateCsvFile(nom string) error {
 }
 
 // Retourne le nom du fichier pac en fonction de l'ip
-func (file *Fichiercsv) PacforIp(rip string) (string, error) {
+func (file *fichierCsv) PacforIP(rip string) (string, error) {
 	ip, _, err := net.ParseCIDR(rip + "/32")
 	if err != nil {
 		return "", err
@@ -188,7 +187,7 @@ func (file *Fichiercsv) PacforIp(rip string) (string, error) {
 }
 
 // Surveillance des modifications du fichier .csv
-func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
+func (file *fichierCsv) WatchCsvFile(reloadconf chan bool) error {
 	err := file.LoadCsvFile()
 	if err != nil {
 		log.Println("Erreur ", err)
@@ -228,7 +227,7 @@ func (file *Fichiercsv) WatchCsvFile(reloadconf chan bool) error {
 }
 
 // Retourne le fichier pac en fonction de l'ip
-func (file *Fichiercsv) handlerRetPac(w http.ResponseWriter, r *http.Request) {
+func (file *fichierCsv) handlerRetPac(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	ip := ""
 	forwardfor := html.EscapeString(r.Header.Get("X-Forwarded-For"))
@@ -237,7 +236,7 @@ func (file *Fichiercsv) handlerRetPac(w http.ResponseWriter, r *http.Request) {
 	} else {
 		ip = html.EscapeString(strings.Split(r.RemoteAddr, ":")[0])
 	}
-	nomfic, err := file.PacforIp(ip)
+	nomfic, err := file.PacforIP(ip)
 	if err != nil {
 		log.Println("Aucun fichier pour l'ip ", ip)
 		http.Error(w, "Fichier pac inexistant", http.StatusNotFound)
@@ -266,7 +265,7 @@ func main() {
 	}
 	hostport := fmt.Sprintf("%s:%s", viper.GetString("listen.host"), viper.GetString("listen.port"))
 	reload := make(chan bool)
-	file := NewCsv(viper.GetString("data.corres"), viper.GetString("data.reppac"))
+	file := newCsv(viper.GetString("data.corres"), viper.GetString("data.reppac"))
 	viper.OnConfigChange(func(e fsnotify.Event) {
 		err := viper.ReadInConfig()
 		if err != nil {
