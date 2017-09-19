@@ -4,4 +4,4 @@ port = 8765
 
 [data]
 corres = "./sys/essai.csv"
-repcap = "./sys/"
+reppac = "./sys/"
