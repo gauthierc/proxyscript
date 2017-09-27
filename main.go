@@ -16,9 +16,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+type couple struct {
+	ip      string
+	fichier string
+}
+
 type fichierCsv struct {
 	nom  string
-	data map[string]string
+	data map[int]couple
 	pac  map[string]*fichierPac
 	path string
 }
@@ -117,7 +122,7 @@ func newCsv(nomfic string, path string) *fichierCsv {
 	file := &fichierCsv{}
 	file.nom = nomfic
 	file.path = path
-	file.data = make(map[string]string)
+	file.data = make(map[int]couple)
 	file.pac = make(map[string]*fichierPac)
 	file.LoadCsvFile()
 	return file
@@ -136,6 +141,7 @@ func (file *fichierCsv) LoadCsvFile() error {
 		delete(file.data, key)
 	}
 	csvr := csv.NewReader(f)
+	i := 0
 	for {
 		row, err := csvr.Read()
 		if err != nil {
@@ -145,7 +151,8 @@ func (file *fichierCsv) LoadCsvFile() error {
 			return err
 		}
 		if row[1] != "" {
-			file.data[row[0]] = row[1]
+			file.data[i] = couple{row[0], row[1]}
+			i = i + 1
 			// Je verifie que le fichier n'est pas déjà en mémoire
 			if file.pac[row[1]] == nil {
 				file.pac[row[1]], err = newPac(row[1], file.path)
@@ -177,12 +184,19 @@ func (file *fichierCsv) PacforIP(rip string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for key, value := range file.data {
-		_, ipnet, _ := net.ParseCIDR(key)
+
+	for i := 0; i < len(file.data); i++ {
+		_, ipnet, _ := net.ParseCIDR(file.data[i].ip)
 		if ipnet.Contains(ip) {
-			return value, nil
+			return file.data[i].fichier, nil
 		}
 	}
+	//	for _, value := range file.data {
+	//		_, ipnet, _ := net.ParseCIDR(value.ip)
+	//		if ipnet.Contains(ip) {
+	//			return value.fichier, nil
+	//		}
+	//	}
 	return "", nil
 }
 
