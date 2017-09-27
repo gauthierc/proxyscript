@@ -191,12 +191,6 @@ func (file *fichierCsv) PacforIP(rip string) (string, error) {
 			return file.data[i].fichier, nil
 		}
 	}
-	//	for _, value := range file.data {
-	//		_, ipnet, _ := net.ParseCIDR(value.ip)
-	//		if ipnet.Contains(ip) {
-	//			return value.fichier, nil
-	//		}
-	//	}
 	return "", nil
 }
 
