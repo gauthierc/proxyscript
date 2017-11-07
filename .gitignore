@@ -1,2 +1,3 @@
 sys/*
 proxyscript
+.pre-commit-config.yaml

@@ -59,10 +59,7 @@ func (file *fichierPac) LoadPacFile() error {
 	}
 	defer f.Close()
 	file.count, err = f.Read(file.data)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // UpdatePacFile : Mise à jour en mémoire du fichier .pac
@@ -105,7 +102,8 @@ func (file *fichierPac) WatchPacFile() error {
 		}
 	}()
 	log.Println("WatchPacFile ", file.path+file.nom)
-	if err := watcher.Add(file.path + file.nom); err != nil {
+	err = watcher.Add(file.path + file.nom)
+	if err != nil {
 		log.Println("Erreur WatchPacFile Add", err)
 		return err
 	}
@@ -216,7 +214,6 @@ func (file *fichierCsv) WatchCsvFile(reloadconf chan bool) error {
 			case <-reloadconf:
 				log.Println("Modification du fichier de config")
 				done <- true
-				break
 			case event := <-watcher.Events:
 				if event.Name != "" {
 					log.Printf("Modification %v\n", event)
@@ -225,7 +222,8 @@ func (file *fichierCsv) WatchCsvFile(reloadconf chan bool) error {
 			}
 		}
 	}()
-	if err := watcher.Add(file.nom); err != nil {
+	err = watcher.Add(file.nom)
+	if err != nil {
 		log.Println("Erreur", err)
 		return err
 	}
@@ -237,7 +235,7 @@ func (file *fichierCsv) WatchCsvFile(reloadconf chan bool) error {
 // Retourne le fichier pac en fonction de l'ip
 func (file *fichierCsv) handlerRetPac(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
-	ip := ""
+	var ip string
 	forwardfor := html.EscapeString(r.Header.Get("X-Forwarded-For"))
 	if forwardfor != "" {
 		ip = forwardfor
