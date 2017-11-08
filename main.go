@@ -57,7 +57,11 @@ func (file *fichierPac) LoadPacFile() error {
 		log.Println("Erreur LoadPacFile ", err)
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err = f.Close(); err != nil {
+			log.Println("Error when closing:", err)
+		}
+	}()
 	file.count, err = f.Read(file.data)
 	return err
 }
@@ -87,7 +91,11 @@ func (file *fichierPac) WatchPacFile() error {
 		log.Println("Erreur ", err)
 		return err
 	}
-	defer watcher.Close()
+	defer func() {
+		if err = watcher.Close(); err != nil {
+			log.Println("Error when closing:", err)
+		}
+	}()
 	done := make(chan bool)
 
 	go func() {
@@ -98,6 +106,8 @@ func (file *fichierPac) WatchPacFile() error {
 					log.Printf("Modification FichierPac %v\n", event)
 					done <- true
 				}
+			case errEv := <-watcher.Errors:
+				log.Println("error:", errEv)
 			}
 		}
 	}()
@@ -122,7 +132,9 @@ func newCsv(nomfic string, path string) *fichierCsv {
 	file.path = path
 	file.data = make(map[int]couple)
 	file.pac = make(map[string]*fichierPac)
-	file.LoadCsvFile()
+	if err := file.LoadCsvFile(); err != nil {
+		log.Println("Error LoadCsvFile:", err)
+	}
 	return file
 }
 
@@ -133,7 +145,11 @@ func (file *fichierCsv) LoadCsvFile() error {
 		log.Println("Erreur LoadCsvFile ", err)
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err = f.Close(); err != nil {
+			log.Println("Error when closing:", err)
+		}
+	}()
 	// Suppression des entrées précédentes si elles existent
 	for key := range file.data {
 		delete(file.data, key)
@@ -204,7 +220,11 @@ func (file *fichierCsv) WatchCsvFile(reloadconf chan bool) error {
 		log.Println("Erreur ", err)
 		return err
 	}
-	defer watcher.Close()
+	defer func() {
+		if err = watcher.Close(); err != nil {
+			log.Println("Error when closing:", err)
+		}
+	}()
 	done := make(chan bool)
 	//	log.Printf("%v\n", file.data)
 
